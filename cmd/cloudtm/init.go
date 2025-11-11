@@ -31,6 +31,7 @@ This command:
 		cloudtmDir := filepath.Join(cwd, ".cloudtm")
 		versionsDir := filepath.Join(cloudtmDir, "versions")
 		metaDir := filepath.Join(cloudtmDir, "meta")
+		currentFile := filepath.Join(cloudtmDir, "current")
 
 		if _, err := os.Stat(cloudtmDir); os.IsNotExist(err) {
 			if err := os.MkdirAll(versionsDir, 0755); err != nil {
@@ -47,6 +48,15 @@ This command:
 			os.MkdirAll(versionsDir, 0755)
 			os.MkdirAll(metaDir, 0755)
 			fmt.Println("ℹ️ .cloudtm/ directory already exists. Verified subfolders.")
+		}
+
+		// Create 'current' file to track the active snapshot version
+		if _, err := os.Stat(currentFile); os.IsNotExist(err) {
+			if err := os.WriteFile(currentFile, []byte(""), 0644); err != nil {
+				fmt.Println("Error creating current file:", err)
+				os.Exit(1)
+			}
+			fmt.Println("✅ Created 'current' file to track snapshot versions.")
 		}
 
 		// Step 3: Run terraform init

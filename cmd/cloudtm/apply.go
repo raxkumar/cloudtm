@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/raxkumar/cloudtm/helper"
 	"github.com/spf13/cobra"
 )
 
@@ -83,22 +84,23 @@ Behaviors:
 				files, _ := os.ReadDir(versionDir)
 				nextVersion := fmt.Sprintf("v%d", len(files)+1)
 
-				tfstateSrc := filepath.Join(cwd, "terraform.tfstate")
-				tfstateDest := filepath.Join(versionDir, nextVersion+".tfstate")
-				metaDest := filepath.Join(metaDir, nextVersion+".json")
-
-				// Copy tfstate
-				srcData, err := os.ReadFile(tfstateSrc)
-				if err != nil {
-					fmt.Println("⚠️ Could not read terraform.tfstate:", err)
+				// Create version directory structure
+				versionPath := filepath.Join(versionDir, nextVersion)
+				tfConfigsPath := filepath.Join(versionPath, "tf_configs")
+				if err := os.MkdirAll(tfConfigsPath, 0755); err != nil {
+					fmt.Println("⚠️ Failed to create version directory:", err)
 					return
 				}
-				if err := os.WriteFile(tfstateDest, srcData, 0644); err != nil {
-					fmt.Println("⚠️ Failed to write version file:", err)
+
+				// Copy entire project directory excluding .terraform and .cloudtm
+				excludeDirs := []string{".terraform", ".cloudtm"}
+				if err := helper.CopyDirectory(cwd, tfConfigsPath, excludeDirs); err != nil {
+					fmt.Println("⚠️ Failed to copy project files:", err)
 					return
 				}
 
 				// Create metadata JSON
+				metaDest := filepath.Join(metaDir, nextVersion+".json")
 				meta := map[string]interface{}{
 					"version":   nextVersion,
 					"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -115,9 +117,16 @@ Behaviors:
 					return
 				}
 
+				// Update current.json
+				if err := helper.UpdateCurrentVersion(cloudtmDir, nextVersion); err != nil {
+					fmt.Println("⚠️ Failed to update current.json:", err)
+					return
+				}
+
 				fmt.Printf("\n📦 Snapshot created: %s\n", nextVersion)
-				fmt.Printf("🗂  Saved state: %s\n", tfstateDest)
+				fmt.Printf("🗂  Saved configs: %s\n", tfConfigsPath)
 				fmt.Printf("🧾 Metadata: %s\n", metaDest)
+				fmt.Printf("✅ Updated current version to: %s\n", nextVersion)
 			} else {
 				fmt.Println("✅ No resource changes detected — skipping snapshot.")
 			}

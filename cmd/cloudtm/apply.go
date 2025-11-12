@@ -92,9 +92,11 @@ Behaviors:
 					return
 				}
 
-				// Copy entire project directory excluding .terraform and .cloudtm
+				// Copy entire project directory excluding .terraform, .cloudtm, and unnecessary files
 				excludeDirs := []string{".terraform", ".cloudtm"}
-				if err := helper.CopyDirectory(cwd, tfConfigsPath, excludeDirs); err != nil {
+				excludeFiles := []string{"terraform.tfstate.backup"}
+				excludePatterns := []string{"*.log", "*.tmp"}
+				if err := helper.CopyDirectory(cwd, tfConfigsPath, excludeDirs, excludeFiles, excludePatterns); err != nil {
 					fmt.Println("⚠️ Failed to copy project files:", err)
 					return
 				}

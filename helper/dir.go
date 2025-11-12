@@ -21,7 +21,8 @@ func CopyDirectory(src, dst string, excludeDirs []string, excludeFiles []string,
 
 		// Skip excluded directories
 		for _, exclude := range excludeDirs {
-			if strings.HasPrefix(relPath, exclude) || relPath == exclude {
+			// Check if this is the exact directory or a path within it
+			if relPath == exclude || strings.HasPrefix(relPath, exclude+string(filepath.Separator)) {
 				if info.IsDir() {
 					return filepath.SkipDir
 				}

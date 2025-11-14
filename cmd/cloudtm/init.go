@@ -33,6 +33,7 @@ This command:
 		versionsDir := filepath.Join(cloudtmDir, "versions")
 		metaDir := filepath.Join(cloudtmDir, "meta")
 		currentFile := filepath.Join(cloudtmDir, "current.json")
+		rollbackFile := filepath.Join(cloudtmDir, "rollback.json")
 
 		if _, err := os.Stat(cloudtmDir); os.IsNotExist(err) {
 			if err := os.MkdirAll(versionsDir, 0755); err != nil {
@@ -62,6 +63,19 @@ This command:
 				os.Exit(1)
 			}
 			fmt.Println("✅ Created 'current.json' file to track snapshot versions.")
+		}
+
+		// Create 'rollback.json' file to track rollback status
+		if _, err := os.Stat(rollbackFile); os.IsNotExist(err) {
+			rollbackData := map[string]string{
+				"rollback": "",
+			}
+			rollbackJSON, _ := json.MarshalIndent(rollbackData, "", "  ")
+			if err := os.WriteFile(rollbackFile, rollbackJSON, 0644); err != nil {
+				fmt.Println("Error creating rollback.json file:", err)
+				os.Exit(1)
+			}
+			fmt.Println("✅ Created 'rollback.json' file to track rollback status.")
 		}
 
 		// Step 3: Run terraform init

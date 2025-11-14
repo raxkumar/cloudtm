@@ -109,21 +109,36 @@ Prerequisites:
 			fmt.Printf("✅ Copied metadata '%s.json' to rollback directory\n", rollbackTo)
 		}
 
-		// Step 10: Run terraform apply --auto-approve in rollback directory
-		fmt.Println("\n🚀 Running 'terraform apply --auto-approve' in rollback directory...")
-		tfCmd := exec.Command("terraform", "apply", "--auto-approve")
-		tfCmd.Dir = rollbackDir
-		tfCmd.Stdout = os.Stdout
-		tfCmd.Stderr = os.Stderr
-		tfCmd.Stdin = os.Stdin
+		// Step 10: Run terraform init in rollback directory
+		fmt.Println("\n🚀 Running 'terraform init' in rollback directory...")
+		initCmd := exec.Command("terraform", "init")
+		initCmd.Dir = rollbackDir
+		initCmd.Stdout = os.Stdout
+		initCmd.Stderr = os.Stderr
+		initCmd.Stdin = os.Stdin
 
-		if err := tfCmd.Run(); err != nil {
+		if err := initCmd.Run(); err != nil {
+			fmt.Println("\n❌ Terraform init failed in rollback directory:", err)
+			fmt.Println("⚠️  Rollback directory preserved for investigation")
+			os.Exit(1)
+		}
+		fmt.Println("✅ Terraform initialized successfully")
+
+		// Step 11: Run terraform apply --auto-approve in rollback directory
+		fmt.Println("\n🚀 Running 'terraform apply --auto-approve' in rollback directory...")
+		applyCmd := exec.Command("terraform", "apply", "--auto-approve")
+		applyCmd.Dir = rollbackDir
+		applyCmd.Stdout = os.Stdout
+		applyCmd.Stderr = os.Stderr
+		applyCmd.Stdin = os.Stdin
+
+		if err := applyCmd.Run(); err != nil {
 			fmt.Println("\n❌ Terraform apply failed in rollback directory:", err)
 			fmt.Println("⚠️  Rollback directory preserved for investigation")
 			os.Exit(1)
 		}
 
-		// Step 11: Update rollback.json
+		// Step 12: Update rollback.json
 		if err := helper.UpdateRollbackVersion(cloudtmDir, rollbackTo); err != nil {
 			fmt.Println("⚠️  Warning: Failed to update rollback.json:", err)
 		} else {
@@ -141,4 +156,3 @@ func init() {
 	rollbackCmd.MarkFlagRequired("to")
 	rootCmd.AddCommand(rollbackCmd)
 }
-

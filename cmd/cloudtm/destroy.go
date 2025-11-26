@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/raxkumar/cloudtm/helper"
 	"github.com/spf13/cobra"
 )
 
@@ -58,6 +59,11 @@ Behaviors:
 		}
 
 		fmt.Println("\n✅ Terraform destroy completed successfully.")
+
+		// Update status to false after successful destroy
+		if err := helper.SetCurrentStatus(cloudtmDir, false); err != nil {
+			fmt.Println("⚠️  Warning: Failed to update current status:", err)
+		}
 	},
 }
 

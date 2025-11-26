@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 )
 
-// UpdateCurrentVersion updates the current.json file with the new version
-func UpdateCurrentVersion(cloudtmDir, version string) error {
+// UpdateCurrentVersion updates the current.json file with the new version and status
+func UpdateCurrentVersion(cloudtmDir, version string, status bool) error {
 	currentFile := filepath.Join(cloudtmDir, "current.json")
 
-	currentData := map[string]string{
+	currentData := map[string]interface{}{
 		"current": version,
+		"status":  status,
 	}
 
 	currentJSON, err := json.MarshalIndent(currentData, "", "  ")
@@ -22,21 +23,51 @@ func UpdateCurrentVersion(cloudtmDir, version string) error {
 	return os.WriteFile(currentFile, currentJSON, 0644)
 }
 
-// GetCurrentVersion reads the current version from current.json
-func GetCurrentVersion(cloudtmDir string) (string, error) {
+// GetCurrentVersion reads the current version and status from current.json
+func GetCurrentVersion(cloudtmDir string) (string, bool, error) {
 	currentFile := filepath.Join(cloudtmDir, "current.json")
 
 	data, err := os.ReadFile(currentFile)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	var currentData map[string]string
+	var currentData map[string]interface{}
 	if err := json.Unmarshal(data, &currentData); err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	return currentData["current"], nil
+	version, _ := currentData["current"].(string)
+	status, _ := currentData["status"].(bool)
+
+	return version, status, nil
+}
+
+// SetCurrentStatus updates only the status field in current.json
+func SetCurrentStatus(cloudtmDir string, status bool) error {
+	currentFile := filepath.Join(cloudtmDir, "current.json")
+
+	// Read existing data
+	data, err := os.ReadFile(currentFile)
+	if err != nil {
+		return err
+	}
+
+	var currentData map[string]interface{}
+	if err := json.Unmarshal(data, &currentData); err != nil {
+		return err
+	}
+
+	// Update only status
+	currentData["status"] = status
+
+	// Write back
+	currentJSON, err := json.MarshalIndent(currentData, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(currentFile, currentJSON, 0644)
 }
 
 // UpdateRollbackVersion updates the rollback.json file with the rollback version

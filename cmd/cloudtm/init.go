@@ -54,8 +54,9 @@ This command:
 
 		// Create 'current.json' file to track the active snapshot version
 		if _, err := os.Stat(currentFile); os.IsNotExist(err) {
-			currentData := map[string]string{
+			currentData := map[string]interface{}{
 				"current": "",
+				"status":  false,
 			}
 			currentJSON, _ := json.MarshalIndent(currentData, "", "  ")
 			if err := os.WriteFile(currentFile, currentJSON, 0644); err != nil {

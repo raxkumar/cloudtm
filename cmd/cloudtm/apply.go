@@ -120,7 +120,7 @@ Behaviors:
 				}
 
 				// Update current.json
-				if err := helper.UpdateCurrentVersion(cloudtmDir, nextVersion); err != nil {
+				if err := helper.UpdateCurrentVersion(cloudtmDir, nextVersion, true); err != nil {
 					fmt.Println("⚠️ Failed to update current.json:", err)
 					return
 				}

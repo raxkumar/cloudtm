@@ -1,6 +1,7 @@
 package cloudtm
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,32 +33,30 @@ Delete Mode:
 - Removes the rollback directory
 - Resets rollback.json`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Step 1: Validate flag usage
-		if rollbackTo == "" && !deleteRollback {
-			fmt.Println("❌ Error: either --to or --del/--delete flag is required")
-			fmt.Println("Usage:")
-			fmt.Println("  cloudtm rollback --to vN        # Rollback to version")
-			fmt.Println("  cloudtm rollback --del          # Delete active rollback")
+		// Step 1: Get current working directory
+		cwd, _ := os.Getwd()
+		cloudtmDir := filepath.Join(cwd, ".cloudtm")
+
+		// Step 2: Verify CloudTimeMachine is initialized
+		if _, err := os.Stat(cloudtmDir); os.IsNotExist(err) {
+			fmt.Println("❌ CloudTimeMachine not initialized. Run: cloudtm init")
 			os.Exit(1)
 		}
 
+		// Step 3: If no flags provided, show current rollback status
+		if rollbackTo == "" && !deleteRollback {
+			showRollbackStatus(cloudtmDir)
+			return
+		}
+
+		// Step 4: Validate mutually exclusive flags
 		if rollbackTo != "" && deleteRollback {
 			fmt.Println("❌ Error: --to and --del/--delete flags are mutually exclusive")
 			fmt.Println("Use either --to vN to rollback or --del to delete active rollback")
 			os.Exit(1)
 		}
 
-		// Step 2: Get current working directory
-		cwd, _ := os.Getwd()
-		cloudtmDir := filepath.Join(cwd, ".cloudtm")
-
-		// Step 3: Verify CloudTimeMachine is initialized
-		if _, err := os.Stat(cloudtmDir); os.IsNotExist(err) {
-			fmt.Println("❌ CloudTimeMachine not initialized. Run: cloudtm init")
-			os.Exit(1)
-		}
-
-		// Step 4: Branch based on mode
+		// Step 5: Branch based on mode
 		if deleteRollback {
 			// DELETE MODE: Clean up active rollback
 			handleDeleteRollback(cloudtmDir)
@@ -66,7 +65,7 @@ Delete Mode:
 
 		// ROLLBACK MODE: Create new rollback from version
 
-		// Step 4: Check if terraform.tfstate has empty resources
+		// Step 6: Check if terraform.tfstate has empty resources
 		fmt.Println("🔍 Checking terraform.tfstate...")
 		isEmpty, err := helper.IsStateEmpty(cwd)
 		if err != nil {
@@ -82,7 +81,7 @@ Delete Mode:
 		}
 		fmt.Println("✅ Terraform state is empty")
 
-		// Step 5: Check if rollback.json is empty
+		// Step 7: Check if rollback.json is empty
 		fmt.Println("🔍 Checking rollback status...")
 		isRollbackEmpty, err := helper.IsRollbackEmpty(cloudtmDir)
 		if err != nil {
@@ -98,7 +97,7 @@ Delete Mode:
 		}
 		fmt.Println("✅ No active rollback in progress")
 
-		// Step 6: Verify requested version exists
+		// Step 8: Verify requested version exists
 		versionPath := filepath.Join(cloudtmDir, "versions", rollbackTo)
 		if _, err := os.Stat(versionPath); os.IsNotExist(err) {
 			fmt.Printf("❌ Error: Version '%s' does not exist\n", rollbackTo)
@@ -106,7 +105,7 @@ Delete Mode:
 		}
 		fmt.Printf("✅ Found version '%s'\n", rollbackTo)
 
-		// Step 7: Create rollback directory
+		// Step 9: Create rollback directory
 		rollbackDir := filepath.Join(cloudtmDir, "rollback")
 		if err := os.RemoveAll(rollbackDir); err != nil {
 			fmt.Println("❌ Error cleaning rollback directory:", err)
@@ -118,7 +117,7 @@ Delete Mode:
 		}
 		fmt.Println("✅ Created rollback directory")
 
-		// Step 8: Copy tf_configs from version to rollback directory
+		// Step 10: Copy tf_configs from version to rollback directory
 		tfConfigsSrc := filepath.Join(versionPath, "tf_configs")
 		if err := helper.CopyDirectory(tfConfigsSrc, rollbackDir, []string{}, []string{}, []string{}); err != nil {
 			fmt.Println("❌ Error copying configs to rollback directory:", err)
@@ -126,7 +125,7 @@ Delete Mode:
 		}
 		fmt.Printf("✅ Copied configs from '%s' to rollback directory\n", rollbackTo)
 
-		// Step 9: Copy metadata file to rollback directory
+		// Step 11: Copy metadata file to rollback directory
 		metaSrc := filepath.Join(cloudtmDir, "meta", rollbackTo+".json")
 		metaDest := filepath.Join(rollbackDir, rollbackTo+".json")
 		if err := helper.CopyFile(metaSrc, metaDest); err != nil {
@@ -135,7 +134,7 @@ Delete Mode:
 			fmt.Printf("✅ Copied metadata '%s.json' to rollback directory\n", rollbackTo)
 		}
 
-		// Step 10: Run terraform init in rollback directory
+		// Step 12: Run terraform init in rollback directory
 		fmt.Println("\n🚀 Running 'terraform init' in rollback directory...")
 		initCmd := exec.Command("terraform", "init")
 		initCmd.Dir = rollbackDir
@@ -150,7 +149,7 @@ Delete Mode:
 		}
 		fmt.Println("✅ Terraform initialized successfully")
 
-		// Step 11: Run terraform apply --auto-approve in rollback directory
+		// Step 13: Run terraform apply --auto-approve in rollback directory
 		fmt.Println("\n🚀 Running 'terraform apply --auto-approve' in rollback directory...")
 		applyCmd := exec.Command("terraform", "apply", "--auto-approve")
 		applyCmd.Dir = rollbackDir
@@ -164,7 +163,7 @@ Delete Mode:
 			os.Exit(1)
 		}
 
-		// Step 12: Update rollback.json
+		// Step 14: Update rollback.json
 		if err := helper.UpdateRollbackVersion(cloudtmDir, rollbackTo); err != nil {
 			fmt.Println("⚠️  Warning: Failed to update rollback.json:", err)
 		} else {
@@ -175,6 +174,66 @@ Delete Mode:
 		fmt.Printf("✅ Infrastructure rolled back to version: %s\n", rollbackTo)
 		fmt.Println("📁 Rollback configs available in: .cloudtm/rollback/")
 	},
+}
+
+func showRollbackStatus(cloudtmDir string) {
+	fmt.Println("\n🔄 Current Rollback Status")
+	fmt.Println("──────────────────────────────────────────────────────────────")
+
+	// Check rollback.json
+	rollbackVersion, err := helper.GetRollbackVersion(cloudtmDir)
+	if err != nil {
+		fmt.Println("❌ Error reading rollback.json:", err)
+		os.Exit(1)
+	}
+
+	if rollbackVersion == "" {
+		fmt.Println("ℹ️  No active rollback")
+		fmt.Println()
+		fmt.Println("Usage:")
+		fmt.Println("  cloudtm rollback --to vN        # Rollback to version")
+		fmt.Println("  cloudtm rollback --del          # Delete active rollback")
+		return
+	}
+
+	fmt.Printf("Active Rollback: %s\n\n", rollbackVersion)
+
+	// Read metadata for the rollback version
+	metaFile := filepath.Join(cloudtmDir, "meta", rollbackVersion+".json")
+	data, err := os.ReadFile(metaFile)
+	if err != nil {
+		fmt.Printf("⚠️  Warning: Could not read metadata for %s\n", rollbackVersion)
+		fmt.Println()
+		fmt.Println("Usage:")
+		fmt.Println("  cloudtm rollback --to vN        # Rollback to version")
+		fmt.Println("  cloudtm rollback --del          # Delete active rollback")
+		return
+	}
+
+	var meta map[string]interface{}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		fmt.Printf("⚠️  Warning: Could not parse metadata for %s\n", rollbackVersion)
+		fmt.Println()
+		fmt.Println("Usage:")
+		fmt.Println("  cloudtm rollback --to vN        # Rollback to version")
+		fmt.Println("  cloudtm rollback --del          # Delete active rollback")
+		return
+	}
+
+	// Display metadata
+	resources, _ := meta["resources"].(map[string]interface{})
+	fmt.Printf("Version:    %s\n", meta["version"])
+	fmt.Printf("Timestamp:  %s\n", meta["timestamp"])
+	fmt.Printf("Added:      %s\n", resources["added"])
+	fmt.Printf("Changed:    %s\n", resources["changed"])
+	fmt.Printf("Destroyed:  %s\n", resources["destroyed"])
+	
+	fmt.Println("──────────────────────────────────────────────────────────────")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  cloudtm rollback --to vN        # Rollback to version")
+	fmt.Println("  cloudtm rollback --del          # Delete active rollback")
+	fmt.Println()
 }
 
 func handleDeleteRollback(cloudtmDir string) {

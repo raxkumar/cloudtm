@@ -61,7 +61,7 @@ homebrew_casks:
     repository:
       owner: raxkumar
       name: homebrew-cloudtm
-      token: "{{ .Env.PUBLISHER_TOKEN }}"
+      token: "{{ .Env.GITHUB_TOKEN }}"
     
     # Commit message
     commit_msg_template: "Cask update for {{ .ProjectName }} version {{ .Tag }}"

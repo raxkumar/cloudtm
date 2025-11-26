@@ -11,22 +11,39 @@ import (
 )
 
 var rollbackTo string
+var deleteRollback bool
 
 var rollbackCmd = &cobra.Command{
 	Use:   "rollback",
 	Short: "rollback infrastructure to a previous snapshot version",
-	Long: `Rollback infrastructure to a previous snapshot version.
-Usage:
-    cloudtm rollback --to vN
+	Long: `Rollback infrastructure to a previous snapshot version or delete an active rollback.
 
-Prerequisites:
+Usage:
+    cloudtm rollback --to vN        # Rollback to specific version
+    cloudtm rollback --del          # Delete active rollback
+    cloudtm rollback --delete       # Delete active rollback (alias)
+
+Rollback Prerequisites:
 1. All resources must be destroyed (terraform.tfstate resources should be empty)
-2. No active rollback should be in progress (rollback.json should be empty)`,
+2. No active rollback should be in progress (rollback.json should be empty)
+
+Delete Mode:
+- Destroys resources in the rollback directory
+- Removes the rollback directory
+- Resets rollback.json`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Step 1: Validate --to flag
-		if rollbackTo == "" {
-			fmt.Println("❌ Error: --to flag is required")
-			fmt.Println("Usage: cloudtm rollback --to vN")
+		// Step 1: Validate flag usage
+		if rollbackTo == "" && !deleteRollback {
+			fmt.Println("❌ Error: either --to or --del/--delete flag is required")
+			fmt.Println("Usage:")
+			fmt.Println("  cloudtm rollback --to vN        # Rollback to version")
+			fmt.Println("  cloudtm rollback --del          # Delete active rollback")
+			os.Exit(1)
+		}
+
+		if rollbackTo != "" && deleteRollback {
+			fmt.Println("❌ Error: --to and --del/--delete flags are mutually exclusive")
+			fmt.Println("Use either --to vN to rollback or --del to delete active rollback")
 			os.Exit(1)
 		}
 
@@ -40,6 +57,15 @@ Prerequisites:
 			os.Exit(1)
 		}
 
+		// Step 4: Branch based on mode
+		if deleteRollback {
+			// DELETE MODE: Clean up active rollback
+			handleDeleteRollback(cloudtmDir)
+			return
+		}
+
+		// ROLLBACK MODE: Create new rollback from version
+
 		// Step 4: Check if terraform.tfstate has empty resources
 		fmt.Println("🔍 Checking terraform.tfstate...")
 		isEmpty, err := helper.IsStateEmpty(cwd)
@@ -51,7 +77,7 @@ Prerequisites:
 			fmt.Println("❌ Error: Resources still exist in terraform.tfstate")
 			fmt.Println("⚠️  You must destroy all resources before rollback")
 			fmt.Println("💡 Run: terraform destroy")
-			fmt.Println("💡 Or: cloudtm destroy (coming soon)")
+			fmt.Println("💡 Or: cloudtm destroy")
 			os.Exit(1)
 		}
 		fmt.Println("✅ Terraform state is empty")
@@ -151,8 +177,80 @@ Prerequisites:
 	},
 }
 
+func handleDeleteRollback(cloudtmDir string) {
+	fmt.Println("🔍 Checking rollback status...")
+
+	// Check if rollback.json is empty
+	isRollbackEmpty, err := helper.IsRollbackEmpty(cloudtmDir)
+	if err != nil {
+		fmt.Println("❌ Error reading rollback.json:", err)
+		os.Exit(1)
+	}
+
+	if isRollbackEmpty {
+		fmt.Println("ℹ️  Nothing to delete - no active rollback found")
+		return
+	}
+
+	// Get the rollback version
+	rollbackVersion, err := helper.GetRollbackVersion(cloudtmDir)
+	if err != nil {
+		fmt.Println("❌ Error getting rollback version:", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✅ Found active rollback: %s\n", rollbackVersion)
+
+	// Get rollback directory path
+	rollbackDir := filepath.Join(cloudtmDir, "rollback")
+
+	// Check if rollback directory exists
+	if _, err := os.Stat(rollbackDir); os.IsNotExist(err) {
+		fmt.Println("⚠️  Rollback directory not found, resetting rollback.json...")
+		if err := helper.UpdateRollbackVersion(cloudtmDir, ""); err != nil {
+			fmt.Println("❌ Error resetting rollback.json:", err)
+			os.Exit(1)
+		}
+		fmt.Println("✅ Reset rollback.json")
+		return
+	}
+
+	// Run terraform destroy in rollback directory
+	fmt.Println("\n🚀 Running 'terraform destroy --auto-approve' in rollback directory...")
+	destroyCmd := exec.Command("terraform", "destroy", "--auto-approve")
+	destroyCmd.Dir = rollbackDir
+	destroyCmd.Stdout = os.Stdout
+	destroyCmd.Stderr = os.Stderr
+	destroyCmd.Stdin = os.Stdin
+
+	if err := destroyCmd.Run(); err != nil {
+		fmt.Println("\n❌ Terraform destroy failed in rollback directory:", err)
+		fmt.Println("⚠️  Rollback directory preserved for investigation")
+		os.Exit(1)
+	}
+
+	fmt.Println("\n✅ Rollback resources destroyed successfully")
+
+	// Delete rollback directory
+	if err := os.RemoveAll(rollbackDir); err != nil {
+		fmt.Println("❌ Error deleting rollback directory:", err)
+		os.Exit(1)
+	}
+	fmt.Println("✅ Deleted rollback directory")
+
+	// Reset rollback.json
+	if err := helper.UpdateRollbackVersion(cloudtmDir, ""); err != nil {
+		fmt.Println("❌ Error resetting rollback.json:", err)
+		os.Exit(1)
+	}
+	fmt.Println("✅ Reset rollback.json")
+
+	fmt.Println("\n🎉 Rollback cleanup completed!")
+}
+
 func init() {
 	rollbackCmd.Flags().StringVar(&rollbackTo, "to", "", "Version to rollback to (e.g., v1, v2)")
-	rollbackCmd.MarkFlagRequired("to")
+	rollbackCmd.Flags().BoolVar(&deleteRollback, "del", false, "Delete active rollback")
+	rollbackCmd.Flags().BoolVar(&deleteRollback, "delete", false, "Delete active rollback (alias for --del)")
 	rootCmd.AddCommand(rollbackCmd)
 }
